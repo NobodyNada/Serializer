@@ -1,12 +1,11 @@
 language: generic
 sudo: required
+env: SWIFT_VERSION=4.0-DEVELOPMENT-SNAPSHOT-2017-06-23-a
 
 matrix:
   include:
     - os: linux
       dist: trusty
-      env:
-        - SWIFT_VERSION=4.0-DEVELOPMENT-SNAPSHOT-2017-06-23-a
     - os: osx
       osx_image: xcode8.3
 
