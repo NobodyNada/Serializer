@@ -1,6 +1,6 @@
 # Serializer
 
-`Codable` serialization to custom formats made easy
+[![Build Status](https://travis-ci.org/NobodyNada/Serializer.svg?branch=master)](https://travis-ci.org/NobodyNada/Serializer)
 
 Swift 4's new `Codable` protocol makes it much simpler to serialize Swift objects.  The built-in [`JSONEncoder`](https://github.com/apple/swift/blob/master/stdlib/public/SDK/Foundation/JSONEncoder.swift) and [`PlistEncoder`](https://github.com/apple/swift/blob/master/stdlib/public/SDK/Foundation/PlistEncoder.swift) encode and decode JSON and plist, but what about when you need to use other formats?
 
