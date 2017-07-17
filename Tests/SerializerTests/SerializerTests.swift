@@ -9,6 +9,9 @@ class SerializerTests: XCTestCase {
     }
     
     public class PassthroughDeserializer: Deserializer {
+        public let dateHandler: ((Serializable) throws -> Date?)? = nil
+        public let dataHandler: ((Serializable) throws -> Data?)? = nil
+        
         public func deserialize(_ value: Serializable) throws -> Serializable {
             return value
         }
@@ -68,6 +71,48 @@ class SerializerTests: XCTestCase {
         
     }
     
+    
+    func testFoundationTypes() throws {
+        struct Test: Codable {
+            var data: Data
+            var date: Date
+        }
+        
+        let data = Data(bytes: [1, 2, 3])
+        let date = Date()
+        let test = Test(data: data, date: date)
+        
+        let serialized = try PassthroughSerializer().encode(test)
+        let errorMessage = "serialized is invalid: \(serialized)"
+        
+        if let t = serialized.unboxed as? [String:Any?] {
+            XCTAssertEqual(t.count, 2, errorMessage)
+            
+            XCTAssertEqual(t["data"] as? Data, data)
+            XCTAssertEqual(t["date"] as? Date, date)
+        }
+        
+        let deserialized = try PassthroughDeserializer().decode(Test.self, from: serialized)
+        XCTAssertEqual(test.data, deserialized.data)
+        XCTAssertEqual(test.date, deserialized.date)
+        
+        
+        //Test different encoding methods
+        let nonStandardSerialized = Serializable.dictionary([
+            "data": .array(data.map { .uint8($0) }),
+            "date": .double(date.timeIntervalSince1970)
+            ])
+        
+        let nonStandardDeserialized = try PassthroughDeserializer().decode(Test.self, from: nonStandardSerialized)
+        XCTAssertEqual(test.data, nonStandardDeserialized.data)
+        XCTAssertEqual(
+            test.date.timeIntervalSince1970,
+            nonStandardDeserialized.date.timeIntervalSince1970,
+            accuracy: 0.001
+        )
+    }
+    
+    
     func testNestedContainer() throws {
         struct Test: Codable {
             private enum CodingKeys: String, CodingKey {
@@ -116,6 +161,7 @@ class SerializerTests: XCTestCase {
         }
     }
     
+    
     func testSuperEncoder() throws {
         struct Test: Codable {
             private enum CodingKeys: String, CodingKey {
@@ -157,8 +203,11 @@ class SerializerTests: XCTestCase {
         _ = try decoder.decode(Test.self, from: serialized)
     }
     
+    
+    
     static var allTests = [
         ("testBasic", testBasic),
+        ("testFoundationTypes", testFoundationTypes),
         ("testNestedContainer", testNestedContainer),
         ("testSuperEncoder", testSuperEncoder)
     ]

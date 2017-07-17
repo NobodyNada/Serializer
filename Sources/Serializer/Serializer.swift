@@ -1,3 +1,5 @@
+import Foundation
+
 ///A Serializer can serialize `Encodable` types to custom data formats.
 ///A custom `Serializer` should have a `SerializedType` `typealias`, and a `serialize` method
 ///which converts a `Serializable` into a `SerializedType`.
@@ -28,6 +30,18 @@ public protocol Serializer {
 public protocol Deserializer {
     ///The type accepted by `deserialize`.
     associatedtype SerializedType
+    
+    ///A closure to perform custom decoding of `Date` objects.
+    ///
+    ///If this closure is `nil` or it returns `nil`, `Deserializer` will attempt
+    ///to decode the date from a UNIX timestamp or ISO-8061 string.
+    var dateHandler: ((Serializable) throws -> Date?)? { get }
+    
+    ///A closure to perform custom decoding of `Data` objects.
+    ///
+    ///If this closure is `nil` or it returns `nil`, `Deserializer` will attempt
+    ///to decode the data from an array of bytes or a base64 string.
+    var dataHandler: ((Serializable) throws -> Data?)? { get }
     
     ///Deserializes a `SerializedType` into a `Serializable`.
     ///- parameter value: The value to deserialize.
@@ -101,6 +115,9 @@ public enum Serializable {
     
     case string(String)
     
+    case data(Data)
+    case date(Date)
+    
     case array([Serializable])
     case dictionary([String:Serializable])
     
@@ -127,6 +144,9 @@ public enum Serializable {
         case .double(let v): return v
             
         case .bool(let v): return v
+            
+        case .data(let v): return v
+        case .date(let v): return v
             
         case .array(let v): return v.map { $0.unboxed }
         case .dictionary(let v):
@@ -160,5 +180,8 @@ extension UInt64: SerializableConvertible { public var asSerializable: Serializa
 extension Float: SerializableConvertible { public var asSerializable: Serializable { return .float(self) } }
 extension Double: SerializableConvertible { public var asSerializable: Serializable { return .double(self) } }
 extension Bool: SerializableConvertible { public var asSerializable: Serializable { return .bool(self) } }
+
+extension Data: SerializableConvertible { public var asSerializable: Serializable { return .data(self) } }
+extension Date: SerializableConvertible { public var asSerializable: Serializable { return .date(self) } }
 
 extension String: SerializableConvertible { public var asSerializable: Serializable { return .string(self) } }

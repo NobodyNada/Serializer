@@ -7,6 +7,8 @@
 //  This file contains the `Decoder` implementation.
 //  Heavily based on `JSONDecoder` (https://github.com/apple/swift/blob/master/stdlib/public/SDK/Foundation/JSONEncoder.swift#L789).
 
+import Foundation
+
 public enum DecodingError: Error {
     case typeMismatch(expected: Any.Type, actual: Serializable)
     case unkeyedContainerAtEnd
@@ -14,11 +16,57 @@ public enum DecodingError: Error {
     case keyNotFound(CodingKey)
 }
 
+private var dateFormatter: DateFormatter = {
+    var formatter = DateFormatter()
+    formatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ssZZZZ"
+    return formatter
+}()
+
+private extension Serializable {
+    var asDate: Date? {
+        switch self {
+        case .date(let v): return v
+            
+        case .int32(let v): return Date(timeIntervalSince1970: TimeInterval(v))
+        case .int64(let v): return Date(timeIntervalSince1970: TimeInterval(v))
+        case .int(let v): return Date(timeIntervalSince1970: TimeInterval(v))
+        case .float(let v): return Date(timeIntervalSince1970: TimeInterval(v))
+        case .double(let v): return Date(timeIntervalSince1970: TimeInterval(v))
+            
+        case .string(let v): return dateFormatter.date(from: v)
+            
+        default: return nil
+        }
+    }
+    
+    var asData: Data? {
+        switch self {
+        case .data(let d): return d
+        case .array(let a):
+            var result = Data(capacity: a.count)
+            for item in a {
+                if case .uint8(let v) = item {
+                    result.append(v)
+                } else {
+                    return nil
+                }
+            }
+            return result
+            
+        case .string(let s): return Data(base64Encoded: s)
+        default: return nil
+        }
+    }
+}
+
 class _Deserializer: Decoder, SingleValueDecodingContainer {
     var storage: [Serializable]
     var codingPath: [CodingKey?]
     
     var userInfo: [CodingUserInfoKey : Any] = [:]
+    
+    var dateHandler: ((Serializable) throws -> Date?)?
+    var dataHandler: ((Serializable) throws -> Data?)?
     
     init(storage: Serializable, at path: [CodingKey?] = []) {
         self.storage = [storage]
@@ -38,7 +86,7 @@ class _Deserializer: Decoder, SingleValueDecodingContainer {
     func unkeyedContainer() throws -> UnkeyedDecodingContainer {
         if case .null = (storage.last ?? .null) { throw DecodingError.unexpectedNull }
         guard case .array(let array) = storage.last! else {
-            throw DecodingError.typeMismatch(expected: [String:Any].self, actual: storage.last!)
+            throw DecodingError.typeMismatch(expected: [Any].self, actual: storage.last!)
         }
         
         return _DeserializerUnkeyedDecodingContainer(decoder: self, storage: array)
@@ -91,6 +139,14 @@ class _Deserializer: Decoder, SingleValueDecodingContainer {
         codingPath.removeLast()
         return result
     }
+    
+    func decodeDate(from serializable: Serializable) throws -> Date? {
+        return try dateHandler?(serializable) ?? serializable.asDate
+    }
+    
+    func decodeData(from serializable: Serializable) throws -> Data? {
+        return try dataHandler?(serializable) ?? serializable.asData
+    }
 }
 
 class _DeserializerKeyedDecodingContainer<K: CodingKey>: KeyedDecodingContainerProtocol {
@@ -128,6 +184,13 @@ class _DeserializerKeyedDecodingContainer<K: CodingKey>: KeyedDecodingContainerP
     
     func decodeIfPresent<T: Decodable>(_ type: T.Type, forKey key: K) throws -> T? {
         guard let value = storage[key.stringValue] else { return nil }
+        
+        if type == Data.self, let data = try decoder.decodeData(from: value) {
+            return data as? T
+        } else if type == Date.self, let date = try decoder.decodeDate(from: value) {
+            return date as? T
+        }
+        
         let containerCount = decoder.storage.count
         let pathCount = decoder.codingPath.count
         decoder.storage.append(value)
