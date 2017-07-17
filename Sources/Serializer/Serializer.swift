@@ -122,7 +122,7 @@ public enum Serializable {
     case dictionary([String:Serializable])
     
     
-    var unboxed: Any? {
+    public var unboxed: Any? {
         switch self {
         case .null: return nil
             
