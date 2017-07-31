@@ -61,14 +61,14 @@ private extension Serializable {
 
 class _Deserializer: Decoder, SingleValueDecodingContainer {
     var storage: [Serializable]
-    var codingPath: [CodingKey?]
+    var codingPath: [CodingKey]
     
     var userInfo: [CodingUserInfoKey : Any] = [:]
     
     var dateHandler: ((Serializable) throws -> Date?)?
     var dataHandler: ((Serializable) throws -> Data?)?
     
-    init(storage: Serializable, at path: [CodingKey?] = []) {
+    init(storage: Serializable, at path: [CodingKey] = []) {
         self.storage = [storage]
         self.codingPath = path
     }
@@ -131,12 +131,10 @@ class _Deserializer: Decoder, SingleValueDecodingContainer {
         let containerCount = storage.count
         let pathCount = codingPath.count
         storage.append(value)
-        codingPath.append(nil)
         let result = try type.init(from: self)
         assert(storage.count == containerCount + 1, "The container stack is not balanced!")
         assert(codingPath.count == pathCount + 1, "The coding path stack is not balanced!")
         storage.removeLast()
-        codingPath.removeLast()
         return result
     }
     
@@ -154,7 +152,7 @@ class _DeserializerKeyedDecodingContainer<K: CodingKey>: KeyedDecodingContainerP
     
     var decoder: _Deserializer
     var storage: [String:Serializable]
-    var codingPath: [CodingKey?]
+    var codingPath: [CodingKey]
     
     var allKeys: [K] {
         return storage.keys.flatMap { Key(stringValue: $0) }
@@ -170,31 +168,41 @@ class _DeserializerKeyedDecodingContainer<K: CodingKey>: KeyedDecodingContainerP
         return storage[key.stringValue] != nil
     }
     
+    func decodeNil(forKey key: K) throws -> Bool {
+        guard let value = storage[key.stringValue] else { throw DecodingError.keyNotFound(key) }
+        if case .null = value { return true }
+        else { return false }
+    }
+    
     //This method exists since the compiler doesn't otherwise know which method to call if a type
     //conforms to *both* Decodable and SerializableConvertible.
-    func decodeIfPresent<T: Decodable & SerializableConvertible>(_ type: T.Type, forKey key: K) throws -> T? {
-        guard let value = storage[key.stringValue] else { return nil }
-        return value.unboxed as? T
+    func decode<T: Decodable & SerializableConvertible>(_ type: T.Type, forKey key: K) throws -> T {
+        guard let value = storage[key.stringValue] else { throw DecodingError.keyNotFound(key) }
+        guard let unboxed = value.unboxed as? T else { throw DecodingError.typeMismatch(expected: T.self, actual: value) }
+        return unboxed
     }
     
-    func decodeIfPresent<T: SerializableConvertible>(_ type: T.Type, forKey key: K) throws -> T? {
-        guard let value = storage[key.stringValue] else { return nil }
-        return value.unboxed as? T
+    func decode<T: SerializableConvertible>(_ type: T.Type, forKey key: K) throws -> T {
+        guard let value = storage[key.stringValue] else { throw DecodingError.keyNotFound(key) }
+        guard let unboxed = value.unboxed as? T else { throw DecodingError.typeMismatch(expected: T.self, actual: value) }
+        return unboxed
     }
     
-    func decodeIfPresent<T: Decodable>(_ type: T.Type, forKey key: K) throws -> T? {
-        guard let value = storage[key.stringValue] else { return nil }
+    func decode<T: Decodable>(_ type: T.Type, forKey key: K) throws -> T {
+        guard let value = storage[key.stringValue] else { throw DecodingError.keyNotFound(key) }
         
         if type == Data.self, let data = try decoder.decodeData(from: value) {
-            return data as? T
+            guard let asT = data as? T else { throw DecodingError.typeMismatch(expected: T.self, actual: value) }
+            return asT
         } else if type == Date.self, let date = try decoder.decodeDate(from: value) {
-            return date as? T
+            guard let asT = date as? T else { throw DecodingError.typeMismatch(expected: T.self, actual: value) }
+            return asT
         }
         
         let containerCount = decoder.storage.count
         let pathCount = decoder.codingPath.count
         decoder.storage.append(value)
-        decoder.codingPath.append(nil)
+        decoder.codingPath.append(key)
         let result = try type.init(from: decoder)
         assert(decoder.storage.count == containerCount + 1, "The container stack is not balanced!")
         assert(decoder.codingPath.count == pathCount + 1, "The coding path stack is not balanced!")
@@ -234,7 +242,7 @@ class _DeserializerKeyedDecodingContainer<K: CodingKey>: KeyedDecodingContainerP
     }
     
     func superDecoder() throws -> Decoder {
-        return try superDecoder(forKey: _SuperKey.`super`)
+        return try superDecoder(forKey: _SerializerKey.`super`)
     }
     
     func superDecoder(forKey key: K) throws -> Decoder {
@@ -256,13 +264,15 @@ class _DeserializerKeyedDecodingContainer<K: CodingKey>: KeyedDecodingContainerP
 class _DeserializerUnkeyedDecodingContainer: UnkeyedDecodingContainer {
     var decoder: _Deserializer
     var storage: [Serializable]
-    var codingPath: [CodingKey?]
+    var codingPath: [CodingKey]
     var count: Int? { return storage.count }
     var isAtEnd: Bool { return index >= storage.count }
     var index = 0
     
-    func next() -> Serializable? {
-        guard !isAtEnd else { return nil }
+    var currentIndex: Int { return index }
+    
+    func next() throws -> Serializable {
+        guard !isAtEnd else { throw DecodingError.unkeyedContainerAtEnd }
         let value = storage[index]
         index += 1
         return value
@@ -274,21 +284,34 @@ class _DeserializerUnkeyedDecodingContainer: UnkeyedDecodingContainer {
         self.codingPath = decoder.codingPath
     }
     
-    func decodeIfPresent<T: Decodable & SerializableConvertible>(_ type: T.Type) throws -> T? {
-        return next()?.unboxed as? T
+     func decodeNil() throws -> Bool {
+        if case .null = try next() { return true }
+        else { return false }
     }
     
-    func decodeIfPresent<T: SerializableConvertible>(_ type: T.Type) throws -> T? {
-        return next()?.unboxed as? T
+    func decode<T: Decodable & SerializableConvertible>(_ type: T.Type) throws -> T {
+        let value = try next()
+        guard let result = value.unboxed as? T else {
+            throw DecodingError.typeMismatch(expected: T.self, actual: value)
+        }
+        return result
     }
     
-    func decodeIfPresent<T: Decodable>(_ type: T.Type) throws -> T? {
-        guard let value = next() else { return nil }
+    func decode<T: SerializableConvertible>(_ type: T.Type) throws -> T {
+        let value = try next()
+        guard let result = value.unboxed as? T else {
+            throw DecodingError.typeMismatch(expected: T.self, actual: value)
+        }
+        return result
+    }
+    
+    func decode<T: Decodable>(_ type: T.Type) throws -> T {
+        let value = try next()
         
         let containerCount = decoder.storage.count
         let pathCount = decoder.codingPath.count
         decoder.storage.append(value)
-        decoder.codingPath.append(nil)
+        decoder.codingPath.append(_SerializerKey(intValue: index))
         let result = try type.init(from: decoder)
         assert(decoder.storage.count == containerCount + 1, "The container stack is not balanced!")
         assert(decoder.codingPath.count == pathCount + 1, "The coding path stack is not balanced!")
@@ -298,42 +321,36 @@ class _DeserializerUnkeyedDecodingContainer: UnkeyedDecodingContainer {
     }
     
     func nestedContainer<NestedKey>(keyedBy type: NestedKey.Type) throws -> KeyedDecodingContainer<NestedKey> {
-        guard let value = next() else {
-            throw DecodingError.unkeyedContainerAtEnd
-        }
+        let value = try next()
         
         guard case .dictionary(let dict) = value else {
             throw DecodingError.typeMismatch(expected: [String:Any].self, actual: value)
         }
         
-        decoder.codingPath.append(nil)
+        decoder.codingPath.append(_SerializerKey(intValue: index))
         let container = _DeserializerKeyedDecodingContainer<NestedKey>(decoder: decoder, storage: dict)
         decoder.codingPath.removeLast()
         return KeyedDecodingContainer(container)
     }
     
     func nestedUnkeyedContainer() throws -> UnkeyedDecodingContainer {
-        guard let value = next() else {
-            throw DecodingError.unkeyedContainerAtEnd
-        }
+        let value = try next()
         
         guard case .array(let array) = value else {
             throw DecodingError.typeMismatch(expected: [Any].self, actual: value)
         }
         
-        decoder.codingPath.append(nil)
+        decoder.codingPath.append(_SerializerKey(intValue: index))
         let container = _DeserializerUnkeyedDecodingContainer(decoder: decoder, storage: array)
         decoder.codingPath.removeLast()
         return container
     }
     
     func superDecoder() throws -> Decoder {
-        decoder.codingPath.append(nil)
+        decoder.codingPath.append(_SerializerKey(intValue: index))
         defer { decoder.codingPath.removeLast() }
         
-        guard let value = next() else {
-            throw DecodingError.unkeyedContainerAtEnd
-        }
+         let value = try next()
         
         if case .null = value { throw DecodingError.unexpectedNull }
         

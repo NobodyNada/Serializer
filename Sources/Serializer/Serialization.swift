@@ -8,7 +8,7 @@
 //  Heavily based on `JSONEncoder` (https://github.com/apple/swift/blob/master/stdlib/public/SDK/Foundation/JSONEncoder.swift).
 
 class _Serializer: Encoder, SingleValueEncodingContainer {
-    var codingPath: [CodingKey?] = []
+    var codingPath: [CodingKey] = []
     var userInfo: [CodingUserInfoKey : Any] = [:]
     var storage: [Serializable] = []
     
@@ -77,7 +77,7 @@ class _SuperSerializer: _Serializer {
         
         switch item {
         case .dictionary(let key): codingPath = target.codingPath + [key]
-        case .array(_): codingPath = target.codingPath + [nil]
+        case .array(let index): codingPath = target.codingPath + [_SerializerKey(intValue: index)]
         }
     }
     
@@ -121,15 +121,27 @@ class _SuperSerializer: _Serializer {
 }
 
 
-enum _SuperKey: String, CodingKey {
-    case `super`
+internal struct _SerializerKey: CodingKey {
+    var stringValue: String
+    var intValue: Int?
+    
+    init(stringValue: String) {
+        self.stringValue = stringValue
+    }
+    
+    init(intValue: Int) {
+        self.intValue = intValue
+        self.stringValue = String(intValue)
+    }
+    
+    static let `super` = _SerializerKey(stringValue: "super")
 }
 
 class _SerializerKeyedEncodingContainer<K: CodingKey>: KeyedEncodingContainerProtocol {
     typealias Key = K
     
     let encoder: _Serializer
-    let codingPath: [CodingKey?]
+    let codingPath: [CodingKey]
     let storageIndex: Int
     
     var storage: [String:Serializable] {
@@ -144,10 +156,14 @@ class _SerializerKeyedEncodingContainer<K: CodingKey>: KeyedEncodingContainerPro
         }
     }
     
-    init(encoder: _Serializer, codingPath: [CodingKey?], storageIndex: Int) {
+    init(encoder: _Serializer, codingPath: [CodingKey], storageIndex: Int) {
         self.encoder = encoder
         self.codingPath = codingPath
         self.storageIndex = storageIndex
+    }
+    
+    func encodeNil(forKey key: K) throws {
+        storage[key.stringValue] = .null
     }
     
     func encode(_ value: SerializableConvertible, forKey key: K) throws {
@@ -189,7 +205,7 @@ class _SerializerKeyedEncodingContainer<K: CodingKey>: KeyedEncodingContainerPro
     }
     
     func superEncoder() -> Encoder {
-        return _SuperSerializer(referencing: encoder, storageIndex: storageIndex, item: .dictionary(key: _SuperKey.super))
+        return _SuperSerializer(referencing: encoder, storageIndex: storageIndex, item: .dictionary(key: _SerializerKey.super))
     }
     
     func superEncoder(forKey key: Key) -> Encoder {
@@ -203,7 +219,7 @@ class _SerializerReferencingKeyedEncodingContainer<K: CodingKey>: _SerializerKey
     let getter: () -> Serializable?
     let setter: (Serializable) -> ()
     
-    init(encoder: _Serializer, codingPath: [CodingKey?],
+    init(encoder: _Serializer, codingPath: [CodingKey],
          getter: @escaping () -> Serializable?, setter: @escaping (Serializable) -> ()) {
         self.getter = getter
         self.setter = setter
@@ -229,7 +245,7 @@ class _SerializerReferencingKeyedEncodingContainer<K: CodingKey>: _SerializerKey
 
 class _SerializerUnkeyedEncodingContainer: UnkeyedEncodingContainer {
     let encoder: _Serializer
-    let codingPath: [CodingKey?]
+    let codingPath: [CodingKey]
     let storageIndex: Int
     
     var storage: [Serializable] {
@@ -244,10 +260,18 @@ class _SerializerUnkeyedEncodingContainer: UnkeyedEncodingContainer {
         }
     }
     
-    init(encoder: _Serializer, codingPath: [CodingKey?], storageIndex: Int) {
+    var count: Int {
+        return storage.count
+    }
+    
+    init(encoder: _Serializer, codingPath: [CodingKey], storageIndex: Int) {
         self.encoder = encoder
         self.codingPath = codingPath
         self.storageIndex = storageIndex
+    }
+    
+ func encodeNil() throws {
+        storage.append(.null)
     }
     
     func encode(_ value: SerializableConvertible) throws {
@@ -260,7 +284,7 @@ class _SerializerUnkeyedEncodingContainer: UnkeyedEncodingContainer {
             return
         }
         
-        encoder.codingPath.append(nil)
+        encoder.codingPath.append(_SerializerKey(intValue: count))
         
         let containerCount = encoder.storage.count
         try value.encode(to: encoder)
@@ -277,7 +301,7 @@ class _SerializerUnkeyedEncodingContainer: UnkeyedEncodingContainer {
         let index = storage.count
         storage.insert(.dictionary([:]), at: index)
         let container = _SerializerReferencingKeyedEncodingContainer<NestedKey>(
-            encoder: encoder, codingPath: codingPath + [nil],
+            encoder: encoder, codingPath: codingPath,
             getter: { self.storage[index] }, setter: { self.storage[index] = $0 }
         )
         return KeyedEncodingContainer(container)
@@ -287,7 +311,7 @@ class _SerializerUnkeyedEncodingContainer: UnkeyedEncodingContainer {
         let index = storage.count
         storage.insert(.array([]), at: index)
         return  _SerializerReferencingUnkeyedEncodingContainer(
-            encoder: encoder, codingPath: codingPath + [nil],
+            encoder: encoder, codingPath: codingPath,
             getter: { self.storage[index] }, setter: { self.storage[index] = $0 }
         )
     }
@@ -303,7 +327,7 @@ class _SerializerReferencingUnkeyedEncodingContainer: _SerializerUnkeyedEncoding
     let getter: () -> Serializable?
     let setter: (Serializable) -> ()
     
-    init(encoder: _Serializer, codingPath: [CodingKey?],
+    init(encoder: _Serializer, codingPath: [CodingKey],
          getter: @escaping () -> Serializable?, setter: @escaping (Serializable) -> ()) {
         self.getter = getter
         self.setter = setter
