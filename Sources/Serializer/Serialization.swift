@@ -12,8 +12,10 @@ class _Serializer: Encoder, SingleValueEncodingContainer {
     var userInfo: [CodingUserInfoKey : Any] = [:]
     var storage: [Serializable] = []
     
+    var canEncodeNewElement: Bool { return storage.count == codingPath.count }
+    
     func assertCanEncodeNewElement() {
-        precondition(storage.count == codingPath.count, "Only one container may be requested")
+        precondition(canEncodeNewElement, "Only one container may be requested")
     }
     
     /*func assertCanEncodeSingleValue() {
@@ -39,16 +41,26 @@ class _Serializer: Encoder, SingleValueEncodingContainer {
     }
     
     func container<Key>(keyedBy type: Key.Type) -> KeyedEncodingContainer<Key> {
-        assertCanEncodeNewElement()
-        storage.append(.dictionary([:]))
+        if canEncodeNewElement {
+            storage.append(.dictionary([:]))
+        } else {
+            guard case .dictionary(_)? = storage.last else {
+                preconditionFailure("Cannot push multiple containers of different types")
+            }
+        }
         return KeyedEncodingContainer<Key>(
             _SerializerKeyedEncodingContainer(encoder: self, codingPath: codingPath, storageIndex: storage.indices.last!)
         )
     }
     
     func unkeyedContainer() -> UnkeyedEncodingContainer {
-        assertCanEncodeNewElement()
-        storage.append(.array([]))
+        if canEncodeNewElement {
+            storage.append(.array([]))
+        } else {
+            guard case .array(_)? = storage.last else {
+                preconditionFailure("Cannot push multiple containers of different types")
+            }
+        }
         return _SerializerUnkeyedEncodingContainer(encoder: self, codingPath: codingPath, storageIndex: storage.indices.last!)
     }
     
@@ -81,7 +93,7 @@ class _SuperSerializer: _Serializer {
         }
     }
     
-    override func assertCanEncodeNewElement() {
+    override var canEncodeNewElement: Bool {
         //Traverse the _SuperSerializer chain and count the items in the coding path.
         var targetPathCount: Int = 0
         var currentSerializer: _Serializer = self
@@ -90,7 +102,7 @@ class _SuperSerializer: _Serializer {
             currentSerializer = next.target
         }
         
-        precondition(storage.count == codingPath.count - targetPathCount - 1, "Only one container may be requested")
+        return storage.count == codingPath.count - targetPathCount - 1
     }
     
     //Write the storage into the target encoder

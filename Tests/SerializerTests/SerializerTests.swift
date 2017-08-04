@@ -203,12 +203,68 @@ class SerializerTests: XCTestCase {
         _ = try decoder.decode(Test.self, from: serialized)
     }
     
-    
+    func testFlatSuperclass() throws {
+        class Super: Codable {
+            private enum CodingKeys: CodingKey {
+                case test1
+            }
+            
+            required init(from decoder: Decoder) throws {
+                let container = try decoder.container(keyedBy: CodingKeys.self)
+                XCTAssertEqual(try container.decode(String.self, forKey: .test1), "Test1")
+            }
+            
+            func encode(to encoder: Encoder) throws {
+                var container = encoder.container(keyedBy: CodingKeys.self)
+                try container.encode("Test1", forKey: .test1)
+            }
+            
+            required init() {}
+        }
+        class Sub: Super {
+            private enum CodingKeys: CodingKey {
+                case test2
+            }
+            required init(from decoder: Decoder) throws {
+                let container = try decoder.container(keyedBy: CodingKeys.self)
+                XCTAssertEqual(try container.decode(String.self, forKey: .test2), "Test2")
+                try super.init(from: decoder)
+            }
+            
+            override func encode(to encoder: Encoder) throws {
+                var container = encoder.container(keyedBy: CodingKeys.self)
+                try container.encode("Test2", forKey: .test2)
+                try super.encode(to: encoder)
+            }
+            
+            required init() { super.init() }
+        }
+        
+        let serialized = try PassthroughSerializer().encode(Sub())
+        guard case .dictionary(let d) = serialized else {
+            XCTFail("serialized was not a dictionary: \(serialized)")
+            return
+        }
+        guard d.count == 2 else {
+            XCTFail("dictionary has wrong number of elements: \(serialized)")
+            return
+        }
+        guard case .string(let s1)? = d["test1"], s1 == "Test1" else {
+            XCTFail("test1 is invalid: \(d)")
+            return
+        }
+        guard case .string(let s2)? = d["test2"], s2 == "Test2" else {
+            XCTFail("test2 is invalid: \(d)")
+            return
+        }
+        _ = try PassthroughDeserializer().decode(Sub.self, from: serialized)
+    }
     
     static var allTests = [
         ("testBasic", testBasic),
         ("testFoundationTypes", testFoundationTypes),
         ("testNestedContainer", testNestedContainer),
-        ("testSuperEncoder", testSuperEncoder)
+        ("testSuperEncoder", testSuperEncoder),
+        ("testFlatSuperclass", testFlatSuperclass)
     ]
 }
