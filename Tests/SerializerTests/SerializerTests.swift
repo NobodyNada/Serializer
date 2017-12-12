@@ -17,6 +17,50 @@ class SerializerTests: XCTestCase {
         }
     }
     
+    func testEquatable() throws {
+        XCTAssertTrue(Serializable.int(5) == Serializable.int(5))
+        XCTAssertFalse(Serializable.int(5) == Serializable.uint(5), "Different types should not compare equal")
+        
+        let array = Serializable.array([.int(5), .string("Hello, world")])
+        XCTAssertTrue(array == array)
+        
+        let dict = Serializable.dictionary(["a": .int(5), "b": .string("Hello, world")])
+        XCTAssertTrue(dict == dict)
+        
+        let values: [Serializable] = [
+            Serializable.null,
+            Serializable.int(0),
+            Serializable.int8(1),
+            Serializable.int16(2),
+            Serializable.int32(3),
+            Serializable.int64(4),
+            
+            Serializable.uint(5),
+            Serializable.uint8(6),
+            Serializable.uint16(7),
+            Serializable.uint32(8),
+            Serializable.uint64(9),
+            
+            Serializable.float(.pi),
+            Serializable.double(Double(M_E)),
+            
+            Serializable.bool(true),
+            
+            Serializable.string("Hello, world!"),
+            
+            Serializable.data(Data([0x1, 0x2, 0x3])),
+            Serializable.date(Date())
+        ]
+        
+        for index in values.indices {
+            XCTAssertTrue(values[index] == values[index])
+            for otherIndex in values.indices {
+                if index == otherIndex { continue }
+                XCTAssertFalse(values[index] == values[otherIndex])
+            }
+        }
+    }
+    
     func testBasic() throws {
         class Test: Codable {
             var i: Int?

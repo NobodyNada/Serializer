@@ -159,6 +159,52 @@ public enum Serializable {
     }
 }
 
+extension Serializable: Equatable {
+    public static func ==(lhs: Serializable, rhs: Serializable) -> Bool {
+        switch lhs {
+        case .null:
+            if case .null = rhs { return true }
+        case .int(let l):
+            if case .int(let r) = rhs { return l == r }
+        case .int8(let l):
+            if case .int8(let r) = rhs { return l == r }
+        case .int16(let l):
+            if case .int16(let r) = rhs { return l == r }
+        case .int32(let l):
+            if case .int32(let r) = rhs { return l == r }
+        case .int64(let l):
+            if case .int64(let r) = rhs { return l == r }
+        case .uint(let l):
+            if case .uint(let r) = rhs { return l == r }
+        case .uint8(let l):
+            if case .uint8(let r) = rhs { return l == r }
+        case .uint16(let l):
+            if case .uint16(let r) = rhs { return l == r }
+        case .uint32(let l):
+            if case .uint32(let r) = rhs { return l == r }
+        case .uint64(let l):
+            if case .uint64(let r) = rhs { return l == r }
+        case .float(let l):
+            if case .float(let r) = rhs { return l == r }
+        case .double(let l):
+            if case .double(let r) = rhs { return l == r }
+        case .bool(let l):
+            if case .bool(let r) = rhs { return l == r }
+        case .string(let l):
+            if case .string(let r) = rhs { return l == r }
+        case .data(let l):
+            if case .data(let r) = rhs { return l == r }
+        case .date(let l):
+            if case .date(let r) = rhs { return l == r }
+        case .array(let l):
+            if case .array(let r) = rhs { return l == r }
+        case .dictionary(let l):
+            if case .dictionary(let r) = rhs { return l == r }
+        }
+        return false
+    }
+}
+
 ///A `SerializableConvertible` is a type which may be converted to a `Serializable`.
 public protocol SerializableConvertible {
     ///Converts this object to a `Serializable`.
