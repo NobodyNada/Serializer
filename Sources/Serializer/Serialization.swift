@@ -7,7 +7,7 @@
 //  This file contains the `Encoder` implementation.
 //  Heavily based on `JSONEncoder` (https://github.com/apple/swift/blob/master/stdlib/public/SDK/Foundation/JSONEncoder.swift).
 
-class _Serializer: Encoder, SingleValueEncodingContainer {
+internal class _Serializer: Encoder, SingleValueEncodingContainer {
     var codingPath: [CodingKey] = []
     var userInfo: [CodingUserInfoKey : Any] = [:]
     var storage: [Serializable] = []
@@ -70,7 +70,7 @@ class _Serializer: Encoder, SingleValueEncodingContainer {
 }
 
 //A _Serializer which writes into another _Serializer's storage.
-class _SuperSerializer: _Serializer {
+private class _SuperSerializer: _Serializer {
     enum ReferenceItem {
         case array(index: Int)
         case dictionary(key: CodingKey)
@@ -149,7 +149,7 @@ internal struct _SerializerKey: CodingKey {
     static let `super` = _SerializerKey(stringValue: "super")
 }
 
-class _SerializerKeyedEncodingContainer<K: CodingKey>: KeyedEncodingContainerProtocol {
+private class _SerializerKeyedEncodingContainer<K: CodingKey>: KeyedEncodingContainerProtocol {
     typealias Key = K
     
     let encoder: _Serializer
@@ -227,7 +227,7 @@ class _SerializerKeyedEncodingContainer<K: CodingKey>: KeyedEncodingContainerPro
 
 //A keyed container which uses a custom getter and setter to access its storage.
 //Used to implement nested containers.
-class _SerializerReferencingKeyedEncodingContainer<K: CodingKey>: _SerializerKeyedEncodingContainer<K> {
+private class _SerializerReferencingKeyedEncodingContainer<K: CodingKey>: _SerializerKeyedEncodingContainer<K> {
     let getter: () -> Serializable?
     let setter: (Serializable) -> ()
     
@@ -255,34 +255,15 @@ class _SerializerReferencingKeyedEncodingContainer<K: CodingKey>: _SerializerKey
     }
 }
 
-class _SerializerUnkeyedEncodingContainer: UnkeyedEncodingContainer {
-    let encoder: _Serializer
-    let codingPath: [CodingKey]
-    let storageIndex: Int
-    
-    var storage: [Serializable] {
-        get {
-            let storageItem = encoder.storage[storageIndex]
-            guard case .array(let array) = storageItem else {
-                fatalError("storage container is not an array")
-            }
-            return array
-        } set {
-            encoder.storage[storageIndex] = .array(newValue)
-        }
-    }
-    
-    var count: Int {
-        return storage.count
-    }
-    
-    init(encoder: _Serializer, codingPath: [CodingKey], storageIndex: Int) {
-        self.encoder = encoder
-        self.codingPath = codingPath
-        self.storageIndex = storageIndex
-    }
-    
- func encodeNil() throws {
+//Workaround to avoid a compiler crash when making _SerializerUnkeyedEncodingContainer non-final
+private protocol _SerializerUnkeyedEncodingContainerProtocol: class, UnkeyedEncodingContainer {
+    var encoder: _Serializer { get }
+    var storage: [Serializable] { get set }
+    var storageIndex: Int { get }
+}
+
+extension _SerializerUnkeyedEncodingContainerProtocol {
+    func encodeNil() throws {
         storage.append(.null)
     }
     
@@ -331,26 +312,54 @@ class _SerializerUnkeyedEncodingContainer: UnkeyedEncodingContainer {
     func superEncoder() -> Encoder {
         return _SuperSerializer(referencing: encoder, storageIndex: storageIndex, item: .array(index: storage.count))
     }
+    
+    var count: Int { return storage.count }
+}
+
+
+private final class _SerializerUnkeyedEncodingContainer: _SerializerUnkeyedEncodingContainerProtocol {
+    final let encoder: _Serializer
+    final let codingPath: [CodingKey]
+    final let storageIndex: Int
+    
+    final var storage: [Serializable] {
+        get {
+            let storageItem = encoder.storage[storageIndex]
+            guard case .array(let array) = storageItem else {
+                fatalError("storage container is not an array")
+            }
+            return array
+        } set {
+            encoder.storage[storageIndex] = .array(newValue)
+        }
+    }
+    
+    init(encoder: _Serializer, codingPath: [CodingKey], storageIndex: Int) {
+        self.encoder = encoder
+        self.codingPath = codingPath
+        self.storageIndex = storageIndex
+    }
 }
 
 //An unkeyed container which uses a custom getter and setter to access its storage.
 //Used to implement nested containers.
-class _SerializerReferencingUnkeyedEncodingContainer: _SerializerUnkeyedEncodingContainer {
+private final class _SerializerReferencingUnkeyedEncodingContainer: _SerializerUnkeyedEncodingContainerProtocol {
+    let encoder: _Serializer
+    var storageIndex: Int { return -1 }
+    let codingPath: [CodingKey]
+    
     let getter: () -> Serializable?
     let setter: (Serializable) -> ()
     
     init(encoder: _Serializer, codingPath: [CodingKey],
          getter: @escaping () -> Serializable?, setter: @escaping (Serializable) -> ()) {
+        self.encoder = encoder
+        self.codingPath = codingPath
         self.getter = getter
         self.setter = setter
-        super.init(
-            encoder: encoder,
-            codingPath: codingPath,
-            storageIndex: -1
-        )
     }
     
-    override var storage: [Serializable] {
+    var storage: [Serializable] {
         get {
             let storageItem = getter() ?? .array([])
             guard case .array(let array) = storageItem else {

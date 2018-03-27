@@ -2,13 +2,13 @@ import XCTest
 @testable import Serializer
 
 class SerializerTests: XCTestCase {
-    public class PassthroughSerializer: Serializer {
+    public final class PassthroughSerializer: Serializer {
         public func serialize(_ serializable: Serializable) -> Serializable {
             return serializable
         }
     }
     
-    public class PassthroughDeserializer: Deserializer {
+    public final class PassthroughDeserializer: Deserializer {
         public let dateHandler: ((Serializable) throws -> Date?)? = nil
         public let dataHandler: ((Serializable) throws -> Data?)? = nil
         

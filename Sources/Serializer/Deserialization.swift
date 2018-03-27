@@ -155,7 +155,12 @@ class _DeserializerKeyedDecodingContainer<K: CodingKey>: KeyedDecodingContainerP
     var codingPath: [CodingKey]
     
     var allKeys: [K] {
-        return storage.keys.flatMap { Key(stringValue: $0) }
+        #if swift(>=4.1)
+            return storage.keys.compactMap { Key(stringValue: $0) }
+        #else
+            return storage.keys.flatMap { Key(stringValue: $0) }
+        #endif
+        
     }
     
     init(decoder: _Deserializer, storage: [String:Serializable]) {
