@@ -9,8 +9,12 @@
 
 internal class _Serializer: Encoder, SingleValueEncodingContainer {
     var codingPath: [CodingKey] = []
-    var userInfo: [CodingUserInfoKey : Any] = [:]
+    var userInfo: [CodingUserInfoKey : Any]
     var storage: [Serializable] = []
+    
+    init(userInfo: [CodingUserInfoKey : Any]) {
+        self.userInfo = userInfo
+    }
     
     var canEncodeNewElement: Bool { return storage.count == codingPath.count }
     
@@ -80,12 +84,12 @@ private class _SuperSerializer: _Serializer {
     let referenceIndex: Int
     let referenceItem: ReferenceItem
     
-    init(referencing target: _Serializer, storageIndex: Int, item: ReferenceItem) {
+    init(referencing target: _Serializer, storageIndex: Int, item: ReferenceItem, userInfo: [CodingUserInfoKey : Any]) {
         self.target = target
         referenceIndex = storageIndex
         referenceItem = item
         
-        super.init()
+        super.init(userInfo: userInfo)
         
         switch item {
         case .dictionary(let key): codingPath = target.codingPath + [key]
@@ -217,11 +221,19 @@ private class _SerializerKeyedEncodingContainer<K: CodingKey>: KeyedEncodingCont
     }
     
     func superEncoder() -> Encoder {
-        return _SuperSerializer(referencing: encoder, storageIndex: storageIndex, item: .dictionary(key: _SerializerKey.super))
+        return _SuperSerializer(
+            referencing: encoder, storageIndex: storageIndex,
+            item: .dictionary(key: _SerializerKey.super),
+            userInfo: encoder.userInfo
+        )
     }
     
     func superEncoder(forKey key: Key) -> Encoder {
-        return _SuperSerializer(referencing: encoder, storageIndex: storageIndex, item: .dictionary(key: key))
+        return _SuperSerializer(
+            referencing: encoder, storageIndex: storageIndex,
+            item: .dictionary(key: key),
+            userInfo: encoder.userInfo
+        )
     }
 }
 
@@ -310,7 +322,11 @@ extension _SerializerUnkeyedEncodingContainerProtocol {
     }
     
     func superEncoder() -> Encoder {
-        return _SuperSerializer(referencing: encoder, storageIndex: storageIndex, item: .array(index: storage.count))
+        return _SuperSerializer(
+            referencing: encoder, storageIndex: storageIndex,
+            item: .array(index: storage.count),
+            userInfo: encoder.userInfo
+        )
     }
     
     var count: Int { return storage.count }

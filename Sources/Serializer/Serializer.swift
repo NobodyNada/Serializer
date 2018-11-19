@@ -22,6 +22,9 @@ public protocol Serializer {
     ///- parameter value: The value to encpde.
     ///- returns: The encoded value.
     func encode<T: Encodable>(_ value: T) throws -> SerializedType
+    
+    /// A dictionary containing custom information accessable when encoding.
+    var userInfo: [CodingUserInfoKey : Any] { get set }
 }
 
 ///A Deerializer can deserialize `Decodable` types from custom data formats.
@@ -58,11 +61,14 @@ public protocol Deserializer {
     ///- parameter value: The value to decode.
     ///- returns: The encoded value.
     func decode<T: Decodable>(_ type: T.Type, from: SerializedType) throws -> T
+    
+    /// A dictionary containing custom information accessable when encoding.
+    var userInfo: [CodingUserInfoKey : Any] { get set }
 }
 
 public extension Serializer {
     public func convert<T: Encodable>(_ value: T) throws -> Serializable {
-        let encoder = _Serializer()
+        let encoder = _Serializer(userInfo: userInfo)
         try value.encode(to: encoder)
         
         assert(encoder.codingPath.isEmpty, "codingPath should be empty")
@@ -75,11 +81,16 @@ public extension Serializer {
     public func encode<T: Encodable>(_ value: T) throws -> SerializedType {
         return try serialize(convert(value))
     }
+    
+    public var userInfo: [CodingUserInfoKey : Any] {
+        get { return [:] }
+        set { fatalError("\(type(of: self)) does not support userInfo.") }
+    }
 }
 
 public extension Deserializer {
     public func convert<T: Decodable>(_ value: Serializable, to: T.Type) throws -> T {
-        let decoder = _Deserializer(storage: value)
+        let decoder = _Deserializer(userInfo: userInfo, storage: value)
         let result = try to.init(from: decoder)
         
         assert(decoder.codingPath.isEmpty, "codingPath should be empty")
@@ -89,6 +100,11 @@ public extension Deserializer {
     
     public func decode<T: Decodable>(_ type: T.Type, from: SerializedType) throws -> T {
         return try convert(deserialize(from), to: type)
+    }
+    
+    public var userInfo: [CodingUserInfoKey : Any] {
+        get { return [:] }
+        set { fatalError("\(type(of: self)) does not support userInfo.") }
     }
 }
 

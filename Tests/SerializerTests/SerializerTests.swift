@@ -6,6 +6,8 @@ class SerializerTests: XCTestCase {
         public func serialize(_ serializable: Serializable) -> Serializable {
             return serializable
         }
+        
+        var userInfo = [CodingUserInfoKey : Any]()
     }
     
     public final class PassthroughDeserializer: Deserializer {
@@ -15,6 +17,8 @@ class SerializerTests: XCTestCase {
         public func deserialize(_ value: Serializable) throws -> Serializable {
             return value
         }
+        
+        var userInfo = [CodingUserInfoKey : Any]()
     }
     
     func testEquatable() throws {
@@ -302,6 +306,42 @@ class SerializerTests: XCTestCase {
             return
         }
         _ = try PassthroughDeserializer().decode(Sub.self, from: serialized)
+    }
+    
+    func testUserInfo() throws {
+        struct Test: Codable, Equatable {
+            static let key = CodingUserInfoKey(rawValue: "test")!
+            
+            init() {}
+            
+            func encode(to encoder: Encoder) throws {
+                XCTAssert(encoder.userInfo[Test.key] as? String == "abc")
+                
+                var container = encoder.singleValueContainer()
+                try container.encode(encoder.userInfo[Test.key] as? String)
+            }
+            
+            init(from decoder: Decoder) throws {
+                XCTAssertEqual(try decoder.singleValueContainer().decode(String.self), "abc")
+                XCTAssert(decoder.userInfo[Test.key] as? String == "def")
+            }
+        }
+        
+        let testObject: [String:Test] = [
+            "1": Test(),
+            "2": Test(),
+            "3": Test()
+        ]
+        let serializer = PassthroughSerializer()
+        serializer.userInfo[Test.key] = "abc"
+        
+        let serialized = try serializer.encode(testObject)
+        
+        let deserializer = PassthroughDeserializer()
+        deserializer.userInfo[Test.key] = "def"
+        
+        let deserialized = try deserializer.decode([String:Test].self, from: serialized)
+        XCTAssertEqual(deserialized, testObject)
     }
     
     static var allTests = [

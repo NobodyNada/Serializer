@@ -63,12 +63,13 @@ class _Deserializer: Decoder, SingleValueDecodingContainer {
     var storage: [Serializable]
     var codingPath: [CodingKey]
     
-    var userInfo: [CodingUserInfoKey : Any] = [:]
+    var userInfo: [CodingUserInfoKey : Any]
     
     var dateHandler: ((Serializable) throws -> Date?)?
     var dataHandler: ((Serializable) throws -> Data?)?
     
-    init(storage: Serializable, at path: [CodingKey] = []) {
+    init(userInfo: [CodingUserInfoKey : Any], storage: Serializable, at path: [CodingKey] = []) {
+        self.userInfo = userInfo
         self.storage = [storage]
         self.codingPath = path
     }
@@ -262,7 +263,7 @@ class _DeserializerKeyedDecodingContainer<K: CodingKey>: KeyedDecodingContainerP
             throw DecodingError.keyNotFound(key)
         }
         
-        return _Deserializer(storage: value, at: decoder.codingPath)
+        return _Deserializer(userInfo: decoder.userInfo, storage: value, at: decoder.codingPath)
     }
 }
 
@@ -359,7 +360,7 @@ class _DeserializerUnkeyedDecodingContainer: UnkeyedDecodingContainer {
         
         if case .null = value { throw DecodingError.unexpectedNull }
         
-        return _Deserializer(storage: value, at: decoder.codingPath)
+        return _Deserializer(userInfo: decoder.userInfo, storage: value, at: decoder.codingPath)
     }
     
     
