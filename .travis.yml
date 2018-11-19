@@ -5,8 +5,8 @@ matrix:
   include:
     - os: linux
       dist: trusty
-      env: SWIFT_VERSION=4.0-DEVELOPMENT-SNAPSHOT-2017-07-24-a
-      install: eval "$(curl -sL https://gist.githubusercontent.com/kylef/5c0475ff02b7c7671d2a/raw/9f442512a46d7a2af7b850d65a7e9bd31edfb09b/swiftenv-install.sh)"
+      env: SWIFT_VERSION=4.1
+      install: eval "$(curl -sL https://swiftenv.fuller.li/install.sh)"
       
     - os: osx
       osx_image: xcode9
