@@ -67,7 +67,7 @@ public protocol Deserializer {
 }
 
 public extension Serializer {
-    public func convert<T: Encodable>(_ value: T) throws -> Serializable {
+    func convert<T: Encodable>(_ value: T) throws -> Serializable {
         let encoder = _Serializer(userInfo: userInfo)
         try value.encode(to: encoder)
         
@@ -78,18 +78,18 @@ public extension Serializer {
     }
     
     
-    public func encode<T: Encodable>(_ value: T) throws -> SerializedType {
+    func encode<T: Encodable>(_ value: T) throws -> SerializedType {
         return try serialize(convert(value))
     }
     
-    public var userInfo: [CodingUserInfoKey : Any] {
+    var userInfo: [CodingUserInfoKey : Any] {
         get { return [:] }
         set { fatalError("\(type(of: self)) does not support userInfo.") }
     }
 }
 
 public extension Deserializer {
-    public func convert<T: Decodable>(_ value: Serializable, to: T.Type) throws -> T {
+    func convert<T: Decodable>(_ value: Serializable, to: T.Type) throws -> T {
         let decoder = _Deserializer(userInfo: userInfo, storage: value)
         let result = try to.init(from: decoder)
         
@@ -98,11 +98,11 @@ public extension Deserializer {
         return result
     }
     
-    public func decode<T: Decodable>(_ type: T.Type, from: SerializedType) throws -> T {
+    func decode<T: Decodable>(_ type: T.Type, from: SerializedType) throws -> T {
         return try convert(deserialize(from), to: type)
     }
     
-    public var userInfo: [CodingUserInfoKey : Any] {
+    var userInfo: [CodingUserInfoKey : Any] {
         get { return [:] }
         set { fatalError("\(type(of: self)) does not support userInfo.") }
     }
