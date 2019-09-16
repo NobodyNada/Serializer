@@ -176,7 +176,7 @@ internal struct _SerializerKey: CodingKey {
     private var _stringValue: String?
     var intValue: Int?
     
-    var stringValue: String { _stringValue ?? String(intValue!) }
+    var stringValue: String { return _stringValue ?? String(intValue!) }
     
     init(stringValue: String) {
         self._stringValue = stringValue
