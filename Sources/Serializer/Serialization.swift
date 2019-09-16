@@ -44,6 +44,33 @@ internal class _Serializer: Encoder, SingleValueEncodingContainer {
         }
     }
     
+    /// Converts a value to a Serializable.
+    internal func convert<T: Encodable>(_ value: T, forKey key: @autoclosure () -> CodingKey) throws -> Serializable? {
+        if let v = value as? SerializableConvertible {
+            return v.asSerializable
+        }
+        
+        codingPath.append(key())
+        defer { codingPath.removeLast() }
+        
+        let initialCount = storage.count
+        
+        if let v = value as? Array<Encodable> {
+            // Array's encoder can be slow because it doesn't use `encode(contentsOf:)`.
+            var container = unkeyedContainer()
+            try container.encode(contentsOf: v.lazy.map(_AnyEncodable.init))
+        } else {
+            try value.encode(to: self)
+        }
+        
+        if storage.count == initialCount {
+            //The value didn't encode anything.
+            return nil
+        } else {
+            return storage.removeLast()
+        }
+    }
+    
     func container<Key>(keyedBy type: Key.Type) -> KeyedEncodingContainer<Key> {
         if canEncodeNewElement {
             storage.append(.dictionary([:]))
@@ -70,6 +97,14 @@ internal class _Serializer: Encoder, SingleValueEncodingContainer {
     
     func singleValueContainer() -> SingleValueEncodingContainer {
         return self
+    }
+}
+
+struct _AnyEncodable: Encodable {
+    var value: Encodable
+    
+    func encode(to encoder: Encoder) throws {
+        try value.encode(to: encoder)
     }
 }
 
@@ -138,16 +173,17 @@ private class _SuperSerializer: _Serializer {
 
 
 internal struct _SerializerKey: CodingKey {
-    var stringValue: String
+    private var _stringValue: String?
     var intValue: Int?
     
+    var stringValue: String { _stringValue ?? String(intValue!) }
+    
     init(stringValue: String) {
-        self.stringValue = stringValue
+        self._stringValue = stringValue
     }
     
     init(intValue: Int) {
         self.intValue = intValue
-        self.stringValue = String(intValue)
     }
     
     static let `super` = _SerializerKey(stringValue: "super")
@@ -182,27 +218,8 @@ private class _SerializerKeyedEncodingContainer<K: CodingKey>: KeyedEncodingCont
         storage[key.stringValue] = .null
     }
     
-    func encode(_ value: SerializableConvertible, forKey key: K) throws {
-        storage[key.stringValue] = value.asSerializable
-    }
-    
     func encode<T>(_ value: T, forKey key: K) throws where T : Encodable {
-        if let v = value as? SerializableConvertible {
-            try encode(v, forKey: key)
-            return
-        }
-        
-        encoder.codingPath.append(key)
-        
-        let containerCount = encoder.storage.count
-        try value.encode(to: encoder)
-        _ = encoder.codingPath.popLast()
-        
-        if encoder.storage.count == containerCount {
-            //The value didn't encode anything.
-        } else {
-            storage[key.stringValue] = encoder.storage.popLast()
-        }
+        storage[key.stringValue] = try encoder.convert(value, forKey: key)
     }
     
     func nestedContainer<NestedKey>(keyedBy keyType: NestedKey.Type, forKey key: K) -> KeyedEncodingContainer<NestedKey> {
@@ -279,27 +296,19 @@ extension _SerializerUnkeyedEncodingContainerProtocol {
         storage.append(.null)
     }
     
-    func encode(_ value: SerializableConvertible) throws {
-        storage.append(value.asSerializable)
+    func encode<T: Sequence>(contentsOf sequence: T) throws where T.Element: Encodable {
+        var index = count
+        func nextKey() -> _SerializerKey {
+            defer { index += 1 }
+            return .init(intValue: index)
+        }
+        
+        storage.reserveCapacity(count + sequence.underestimatedCount)
+        try storage.append(contentsOf: sequence.lazy.compactMap { try encoder.convert($0, forKey: nextKey()) })
     }
     
-    func encode<T>(_ value: T) throws where T : Encodable {
-        if let v = value as? SerializableConvertible {
-            try encode(v)
-            return
-        }
-        
-        encoder.codingPath.append(_SerializerKey(intValue: count))
-        
-        let containerCount = encoder.storage.count
-        try value.encode(to: encoder)
-        _ = encoder.codingPath.popLast()
-        
-        if encoder.storage.count == containerCount {
-            //The value didn't encode anything.
-        } else {
-            storage.append(encoder.storage.popLast()!)
-        }
+    func encode<T>(_ value: T) throws where T: Encodable {
+        try encoder.convert(value, forKey: _SerializerKey(intValue: count)).map { storage.append($0) }
     }
     
     func nestedContainer<NestedKey>(keyedBy keyType: NestedKey.Type) -> KeyedEncodingContainer<NestedKey> {
