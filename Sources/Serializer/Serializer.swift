@@ -34,17 +34,17 @@ public protocol Deserializer {
     ///The type accepted by `deserialize`.
     associatedtype SerializedType
     
-    ///A closure to perform custom decoding of `Date` objects.
+    ///A callback to perform custom decoding of `Date` objects.
     ///
-    ///If this closure is `nil` or it returns `nil`, `Deserializer` will attempt
+    ///If this function is returns `nil`, `Deserializer` will attempt
     ///to decode the date from a UNIX timestamp or ISO-8061 string.
-    var dateHandler: ((Serializable) throws -> Date?)? { get }
+    func decode(date: Serializable) throws -> Date?
     
-    ///A closure to perform custom decoding of `Data` objects.
+    ///A callback to perform custom decoding of `Data` objects.
     ///
-    ///If this closure is `nil` or it returns `nil`, `Deserializer` will attempt
+    ///If this function returns `nil`, `Deserializer` will attempt
     ///to decode the data from an array of bytes or a base64 string.
-    var dataHandler: ((Serializable) throws -> Data?)? { get }
+    func decode(data: Serializable) throws -> Data?
     
     ///Deserializes a `SerializedType` into a `Serializable`.
     ///- parameter value: The value to deserialize.
@@ -101,6 +101,9 @@ public extension Deserializer {
     func decode<T: Decodable>(_ type: T.Type, from: SerializedType) throws -> T {
         return try convert(deserialize(from), to: type)
     }
+    
+    func decode(date: Serializable) throws -> Date? { return nil }
+    func decode(data: Serializable) throws -> Data? { return nil }
     
     var userInfo: [CodingUserInfoKey : Any] {
         get { return [:] }
