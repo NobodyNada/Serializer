@@ -140,6 +140,7 @@ public enum Serializable {
     case array([Serializable])
     case dictionary([String:Serializable])
     
+    case custom(CustomSerializable)
     
     public var unboxed: Any? {
         switch self {
@@ -174,7 +175,34 @@ public enum Serializable {
                 result[key] = value.unboxed
             }
             return result
+            
+        case .custom(let v): return v.unboxed
         }
+    }
+}
+
+/// A type that can be stored within a `Serializable.custom` entry.
+public protocol CustomSerializable: SerializableConvertible {
+    /// The value of this item to use when decoding.
+    ///
+    /// The default implementation returns `self`, but you can substitute
+    /// another value if you want to implement custom decoding logic.
+    var unboxed: Any? { get }
+    
+    /// Compares two `CustomSerializable` objects for equality.
+    func isEqual(to other: CustomSerializable) -> Bool
+}
+
+public extension CustomSerializable {
+    /// Returns a `Serializable.custom` containing this object.
+    var asSerializable: Serializable { return .custom(self) }
+    
+    var unboxed: Any? { return self }
+}
+
+public extension CustomSerializable where Self: Equatable {
+    func isEqual(to other: CustomSerializable) -> Bool {
+        return self == (other as? Self)
     }
 }
 
@@ -219,6 +247,8 @@ extension Serializable: Equatable {
             if case .array(let r) = rhs { return l == r }
         case .dictionary(let l):
             if case .dictionary(let r) = rhs { return l == r }
+        case .custom(let l):
+            if case .custom(let r) = rhs { return l.isEqual(to: r) }
         }
         return false
     }

@@ -344,11 +344,32 @@ class SerializerTests: XCTestCase {
         XCTAssertEqual(deserialized, testObject)
     }
     
+    func testCustom() throws {
+        struct Custom: CustomSerializable, Equatable, Codable {
+            var value: Int
+        }
+        struct Test: Codable {
+            var test: Custom
+        }
+        
+        let custom = Custom(value: 5)
+        
+        let serialized = try PassthroughSerializer().encode(Test(test: custom))
+        XCTAssertEqual(
+            serialized,
+            Serializable.dictionary(["test":.custom(custom)])
+        )
+        
+        let deserialized = try PassthroughDeserializer().decode(Test.self, from: serialized)
+        XCTAssertEqual(deserialized.test, custom)
+    }
+    
     static var allTests = [
         ("testBasic", testBasic),
         ("testFoundationTypes", testFoundationTypes),
         ("testNestedContainer", testNestedContainer),
         ("testSuperEncoder", testSuperEncoder),
-        ("testFlatSuperclass", testFlatSuperclass)
+        ("testFlatSuperclass", testFlatSuperclass),
+        ("testCustom", testCustom)
     ]
 }

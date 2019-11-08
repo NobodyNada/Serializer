@@ -148,6 +148,16 @@ class _Deserializer: Decoder, SingleValueDecodingContainer {
     }
 }
 
+private extension Serializable {
+    var isStructural: Bool {
+        switch self {
+        case .array(_): return true
+        case .dictionary(_): return true
+        default: return false
+        }
+    }
+}
+
 class _DeserializerKeyedDecodingContainer<K: CodingKey>: KeyedDecodingContainerProtocol {
     typealias Key = K
     
@@ -203,6 +213,8 @@ class _DeserializerKeyedDecodingContainer<K: CodingKey>: KeyedDecodingContainerP
         } else if type == Date.self, let date = try decoder.decodeDate(from: value) {
             guard let asT = date as? T else { throw DecodingError.typeMismatch(expected: T.self, actual: value) }
             return asT
+        } else if !value.isStructural, let unboxed = value.unboxed as? T {  // don't unbox an array or dictionary; that could be expensive
+            return unboxed
         }
         
         let containerCount = decoder.storage.count
