@@ -7,6 +7,10 @@ class SerializerTests: XCTestCase {
             return serializable
         }
         
+        public func canEncode(_ custom: CustomSerializable) -> Bool {
+            return custom is Custom
+        }
+        
         var userInfo = [CodingUserInfoKey : Any]()
     }
     
@@ -19,6 +23,10 @@ class SerializerTests: XCTestCase {
         }
         
         var userInfo = [CodingUserInfoKey : Any]()
+    }
+
+    struct Custom: CustomSerializable, Equatable, Codable {
+        var value: Int
     }
     
     func testEquatable() throws {
@@ -345,9 +353,6 @@ class SerializerTests: XCTestCase {
     }
     
     func testCustom() throws {
-        struct Custom: CustomSerializable, Equatable, Codable {
-            var value: Int
-        }
         struct Test: Codable {
             var test: Custom
         }

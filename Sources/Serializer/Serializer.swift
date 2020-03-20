@@ -25,6 +25,13 @@ public protocol Serializer {
     
     /// A dictionary containing custom information accessable when encoding.
     var userInfo: [CodingUserInfoKey : Any] { get set }
+    
+    /// Returns true if this serializer knows how to encode the given CustomSerializable object.
+    /// The default implementation always returns false.
+    ///
+    /// If this method returns true, the object will be encoded as a `Serializable.custom` value
+    /// instead of using the object's `Codable` conformance.
+    func canEncode(_ custom: CustomSerializable) -> Bool
 }
 
 ///A Deerializer can deserialize `Decodable` types from custom data formats.
@@ -68,7 +75,7 @@ public protocol Deserializer {
 
 public extension Serializer {
     func convert<T: Encodable>(_ value: T) throws -> Serializable {
-        let encoder = _Serializer(userInfo: userInfo)
+        let encoder = _Serializer(userInfo: userInfo, canEncodeCustom: self.canEncode)
         try value.encode(to: encoder)
         
         assert(encoder.codingPath.isEmpty, "codingPath should be empty")
@@ -86,6 +93,8 @@ public extension Serializer {
         get { return [:] }
         set { fatalError("\(type(of: self)) does not support userInfo.") }
     }
+    
+    func canEncode(_ custom: CustomSerializable) -> Bool { return false }
 }
 
 public extension Deserializer {

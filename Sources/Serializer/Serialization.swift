@@ -11,9 +11,11 @@ internal class _Serializer: Encoder, SingleValueEncodingContainer {
     var codingPath: [CodingKey] = []
     var userInfo: [CodingUserInfoKey : Any]
     var storage: [Serializable] = []
+    var canEncodeCustom: (CustomSerializable) -> Bool
     
-    init(userInfo: [CodingUserInfoKey : Any]) {
+    init(userInfo: [CodingUserInfoKey : Any], canEncodeCustom: @escaping (CustomSerializable) -> Bool) {
         self.userInfo = userInfo
+        self.canEncodeCustom = canEncodeCustom
     }
     
     var canEncodeNewElement: Bool { return storage.count == codingPath.count }
@@ -38,7 +40,11 @@ internal class _Serializer: Encoder, SingleValueEncodingContainer {
     func encode<T>(_ value: T) throws where T : Encodable {
         assertCanEncodeNewElement()
         if let v = value as? SerializableConvertible {
-            storage.append(v.asSerializable)
+            if let c = value as? CustomSerializable, !canEncodeCustom(c) {
+                try value.encode(to: self)
+            } else {
+                storage.append(v.asSerializable)
+            }
         } else {
             try value.encode(to: self)
         }
@@ -47,7 +53,12 @@ internal class _Serializer: Encoder, SingleValueEncodingContainer {
     /// Converts a value to a Serializable.
     internal func convert<T: Encodable>(_ value: T, forKey key: @autoclosure () -> CodingKey) throws -> Serializable? {
         if let v = value as? SerializableConvertible {
-            return v.asSerializable
+            if let c = value as? CustomSerializable, !canEncodeCustom(c) {
+                // We cannot directly convert this object; use Codable.
+            } else {
+                // We can directly convert this object.
+                return v.asSerializable
+            }
         }
         
         codingPath.append(key())
@@ -55,8 +66,11 @@ internal class _Serializer: Encoder, SingleValueEncodingContainer {
         
         let initialCount = storage.count
         
-        if let v = value as? Array<Encodable> {
-            // Array's encoder can be slow because it doesn't use `encode(contentsOf:)`.
+        // Array's encoder can be slow because it doesn't use `encode(contentsOf:)`.
+        if let v = value as? Array<SerializableConvertible> {
+            let container = _unkeyedContainer()
+            try container.encode(contentsOfSerializable: v)
+        } else if let v = value as? Array<Encodable> {
             var container = unkeyedContainer()
             try container.encode(contentsOf: v.lazy.map(_AnyEncodable.init))
         } else {
@@ -84,7 +98,7 @@ internal class _Serializer: Encoder, SingleValueEncodingContainer {
         )
     }
     
-    func unkeyedContainer() -> UnkeyedEncodingContainer {
+    private func _unkeyedContainer() -> _SerializerUnkeyedEncodingContainerProtocol {
         if canEncodeNewElement {
             storage.append(.array([]))
         } else {
@@ -94,6 +108,8 @@ internal class _Serializer: Encoder, SingleValueEncodingContainer {
         }
         return _SerializerUnkeyedEncodingContainer(encoder: self, codingPath: codingPath, storageIndex: storage.indices.last!)
     }
+    
+    func unkeyedContainer() -> UnkeyedEncodingContainer { return _unkeyedContainer() }
     
     func singleValueContainer() -> SingleValueEncodingContainer {
         return self
@@ -124,7 +140,7 @@ private class _SuperSerializer: _Serializer {
         referenceIndex = storageIndex
         referenceItem = item
         
-        super.init(userInfo: userInfo)
+        super.init(userInfo: userInfo, canEncodeCustom: target.canEncodeCustom)
         
         switch item {
         case .dictionary(let key): codingPath = target.codingPath + [key]
@@ -296,7 +312,23 @@ extension _SerializerUnkeyedEncodingContainerProtocol {
         storage.append(.null)
     }
     
+    func encode<T: Sequence>(contentsOfSerializable sequence: T) throws where T.Element == SerializableConvertible {
+        var index = count
+        func nextKey() -> _SerializerKey {
+            defer { index += 1 }
+            return .init(intValue: index)
+        }
+        
+        storage.reserveCapacity(count + sequence.underestimatedCount)
+        storage.append(contentsOf: sequence.lazy.map { $0.asSerializable })
+    }
+    
     func encode<T: Sequence>(contentsOf sequence: T) throws where T.Element: Encodable {
+        // If the element type conforms to SerializableConvertible,
+        if T.Element.self is SerializableConvertible.Type || T.Element.self is SerializableConvertible.Protocol {
+            return try encode(contentsOfSerializable: sequence.lazy.map { $0 as! SerializableConvertible })
+        }
+        
         var index = count
         func nextKey() -> _SerializerKey {
             defer { index += 1 }
